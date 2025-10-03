@@ -17,16 +17,12 @@ import com.example.rrhh_kotlin.ui.theme.RRHHkotlinTheme
 
 // Clase principal de la actividad
 class MainActivity : ComponentActivity() {
-    // Método que se ejecuta al crear la actividad
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge() // Habilita el uso de toda la pantalla
         setContent {
-            // Aplica el tema de la app
             RRHHkotlinTheme {
-                // Scaffold proporciona la estructura visual básica
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    // Llama al formulario principal de la app
                     RRHHForm(modifier = Modifier.padding(innerPadding))
                 }
             }
@@ -34,30 +30,67 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// Data class para encapsular los resultados
+data class SalaryResult(
+    val inss: Double,
+    val ir: Double,
+    val totalDeduccion: Double,
+    val salarioNeto: Double
+)
+
+// Función para calcular el INSS
+fun calculateINSS(salary: Double): Double {
+    return salary * 0.07
+}
+
+// Función para calcular el IR (recibe también el INSS para evitar recalcular)
+fun calculateIR(salary: Double, inss: Double): Double {
+    val netMonthly = salary - inss
+    val netAnnual = netMonthly * 12
+
+    // Cálculo del IR según tabla
+    val irAnual = when {
+        netAnnual <= 100_000 -> 0.0
+        netAnnual <= 200_000 -> (netAnnual - 100_000) * 0.15
+        netAnnual <= 350_000 -> 15_000 + (netAnnual - 200_000) * 0.20
+        netAnnual <= 500_000 -> 45_000 + (netAnnual - 350_000) * 0.25
+        else -> 82_500 + (netAnnual - 500_000) * 0.30
+    }
+
+    return irAnual / 12
+}
+
+// Función principal de cálculo de salario
+fun calculateSalary(nombre: String, salario: Double): SalaryResult? {
+    if (nombre.isBlank() || salario <= 0) return null
+
+    val inss = calculateINSS(salario)
+    val ir = calculateIR(salario, inss)
+    val total = inss + ir
+    val neto = salario - total
+
+    return SalaryResult(inss, ir, total, neto)
+}
+
 // Composable que representa el formulario de RRHH
 @Composable
 fun RRHHForm(modifier: Modifier = Modifier) {
-    // Variables de estado para los campos y resultados
-    var nombre by remember { mutableStateOf("") } // Nombre del trabajador
-    var salarioInput by remember { mutableStateOf("") } // Salario ingresado como texto
-    var inss by remember { mutableStateOf<Double?>(null) } // Resultado del INSS
-    var ir by remember { mutableStateOf<Double?>(null) } // Resultado del IR
-    var totalDeduccion by remember { mutableStateOf<Double?>(null) } // Total de deducciones
-    var salarioNeto by remember { mutableStateOf<Double?>(null) } // Salario neto
-    var error by remember { mutableStateOf("") } // Mensaje de error
-    val context = LocalContext.current // Contexto de la app
+    var nombre by remember { mutableStateOf("") }
+    var salarioInput by remember { mutableStateOf("") }
+    var result by remember { mutableStateOf<SalaryResult?>(null) }
+    var error by remember { mutableStateOf("") }
+    val context = LocalContext.current
 
-    // Estructura vertical de la pantalla
     Column(
         modifier = modifier
             .fillMaxSize()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Título del formulario
+        // Título
         Text("Ingrese los datos del trabajador", style = MaterialTheme.typography.titleLarge)
 
-        // Campo para ingresar el nombre completo
+        // Campo nombre
         OutlinedTextField(
             value = nombre,
             onValueChange = { nombre = it },
@@ -65,80 +98,70 @@ fun RRHHForm(modifier: Modifier = Modifier) {
             modifier = Modifier.fillMaxWidth()
         )
 
-        // Campo para ingresar el salario mensual
+        // Campo salario
         OutlinedTextField(
             value = salarioInput,
             onValueChange = { salarioInput = it },
             label = { Text("Salario mensual") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), // Solo permite números
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             modifier = Modifier.fillMaxWidth()
         )
 
-        // Muestra el mensaje de error si existe
+        // Mensaje de error
         if (error.isNotEmpty()) {
             Text(text = error, color = MaterialTheme.colorScheme.error)
         }
 
-        // Fila de botones: Calcular, Nuevo y Salir
+        // Botones
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Botón para calcular deducciones y salario neto
             Button(onClick = {
-                error = "" // Limpia el error anterior
-                val salario = salarioInput.toDoubleOrNull() // Convierte el salario a Double
-                // Validación de campos
-                if (nombre.isBlank()) {
-                    error = "Ingrese el nombre completo."
-                } else if (salario == null || salario <= 0) {
+                error = ""
+                val salario = salarioInput.toDoubleOrNull()
+                if (salario == null || salario <= 0) {
                     error = "Ingrese un salario válido."
+                    result = null
+                } else if (nombre.isBlank()) {
+                    error = "Ingrese el nombre completo."
+                    result = null
                 } else {
-                    // Cálculo del INSS (7%)
-                    inss = salario * 0.07
-                    // Cálculo del IR (15% si salario > 30000, si no 0)
-                    ir = if (salario > 30000) salario * 0.15 else 0.0
-                    // Suma de deducciones
-                    totalDeduccion = inss!! + ir!!
-                    // Salario neto
-                    salarioNeto = salario - totalDeduccion!!
+                    result = calculateSalary(nombre, salario)
                 }
             }) {
                 Text("Calcular")
             }
-            // Botón para limpiar todos los campos y resultados
+
             Button(onClick = {
                 nombre = ""
                 salarioInput = ""
-                inss = null
-                ir = null
-                totalDeduccion = null
-                salarioNeto = null
+                result = null
                 error = ""
             }) {
                 Text("Nuevo")
             }
-            // Botón para salir de la aplicación
+
             Button(onClick = {
-                (context as? ComponentActivity)?.finishAffinity() // Cierra la app
+                (context as? ComponentActivity)?.finishAffinity()
             }) {
                 Text("Salir")
             }
         }
 
-        // Mostrar resultados si ya se calculó
-        if (salarioNeto != null) {
-            Spacer(modifier = Modifier.height(12.dp)) // Espacio visual
-            // Muestra el resultado de cada cálculo
-            Text("INSS: %.2f".format(inss))
-            Text("IR: %.2f".format(ir))
-            Text("Total Deducción: %.2f".format(totalDeduccion))
-            Text("Salario Neto: %.2f".format(salarioNeto))
+        // Mostrar resultados
+        result?.let {
+            Spacer(modifier = Modifier.height(12.dp))
+            Text("INSS: %.2f".format(it.inss))
+            Text("IR: %.2f".format(it.ir))
+            Text("Total Deducción: %.2f".format(it.totalDeduccion))
+            Text("Salario Neto: %.2f".format(it.salarioNeto))
         }
 
-        Spacer(modifier = Modifier.height(16.dp)) // Espacio visual
-        // Documentación paso a paso para el usuario
-        Text("\uD83D\uDCDD Proceso paso a paso:", style = MaterialTheme.typography.titleMedium)
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Instrucciones
+        Text("Proceso paso a paso:", style = MaterialTheme.typography.titleMedium)
         Text("1. Ingrese el nombre completo y el salario mensual.")
         Text("2. Presione 'Calcular' para ver los resultados.")
         Text("3. Use 'Nuevo' para limpiar los campos.")
